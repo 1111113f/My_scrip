@@ -1,0 +1,163 @@
+-- LocalScript в StarterPlayerScripts
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+repeat task.wait() until Players.LocalPlayer.Character
+local player = Players.LocalPlayer
+local character = player.Character
+repeat task.wait() until character:FindFirstChild("HumanoidRootPart")
+
+local HRP = character.HumanoidRootPart
+local myName = player.Name
+
+print("=== СТАРТ ===")
+
+-- УДАЛЯЕМ ВСЕ СТАРЫЕ ВИЗУАЛЫ
+local function nukeAllVisuals()
+    local count = 0
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name:match("^TRAP_") or obj.Name:match("^NEW_TRAP") or (obj.Name == "TrapVisual" and obj:IsA("BasePart")) then
+            obj:Destroy()
+            count += 1
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "TrapVisual" and obj:IsA("BasePart") then
+            obj:Destroy()
+            count += 1
+        end
+    end
+    print("💥 Уничтожено визуалов:", count)
+end
+
+nukeAllVisuals()
+
+-- Храним данные
+local visualizations = {}
+local myHumanoid = character:WaitForChild("Humanoid")
+
+-- Проверка - моё ли это
+local function isMine(obj)
+    if not obj then return false end
+    if obj.Name == myName then return true end
+    if obj.Name:match(myName) then return true end
+    if obj.Parent then
+        if obj.Parent.Name == myName then return true end
+        if obj.Parent == character then return true end
+        if obj.Parent.Parent and obj.Parent.Parent.Name == myName then return true end
+    end
+    if obj:GetAttribute("Owner") == myName then return true end
+    return false
+end
+
+-- Создание визуала
+local function createVisual(obj, ownerName, isNew)
+    local visual = Instance.new("Part")
+    visual.Name = isNew and "NEW_TRAP_" .. ownerName or "TRAP_" .. ownerName
+    visual.Size = obj.Size + Vector3.new(1, 1, 1)
+    visual.CFrame = obj.CFrame
+    visual.Anchored = true
+    visual.CanCollide = false
+    visual.Color = isNew and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+    visual.Material = Enum.Material.Neon
+    visual.Transparency = isNew and 0.3 or 0.5
+    visual.Parent = workspace
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Size = UDim2.new(0, 120, 0, 25)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = visual
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "💀 " .. ownerName
+    label.TextColor3 = isNew and Color3.new(0, 1, 0) or Color3.new(1, 0.5, 0)
+    label.TextStrokeTransparency = 0
+    label.TextScaled = true
+    label.Parent = billboard
+    
+    local connection = RunService.Heartbeat:Connect(function()
+        if obj.Parent then
+            visual.CFrame = obj.CFrame
+        else
+            visual:Destroy()
+            visualizations[obj] = nil
+        end
+    end)
+    
+    visualizations[obj] = {
+        visual = visual,
+        connection = connection
+    }
+end
+
+-- Очистка наших визуалов
+local function clearOurVisuals()
+    for hitbox, data in pairs(visualizations) do
+        if data.visual and data.visual.Parent then
+            data.visual:Destroy()
+        end
+        if data.connection then
+            data.connection:Disconnect()
+        end
+    end
+    visualizations = {}
+    print("🗑️ Очищено")
+end
+
+-- Сканирование
+local function scanTraps()
+    clearOurVisuals()
+    
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if isMine(obj) then continue end
+        if obj.Name == "TrapVisual" then continue end
+        
+        if obj.Name == "Hitbox" and obj:IsA("BasePart") then
+            if isMine(obj.Parent) then continue end
+            
+            local ownerName = obj.Parent and obj.Parent.Name or "Неизвестно"
+            createVisual(obj, ownerName, false)
+        end
+    end
+    
+    print("Скан завершён")
+end
+
+-- Первый скан
+scanTraps()
+
+-- Новые ловушки
+workspace.DescendantAdded:Connect(function(obj)
+    if isMine(obj) or obj.Name == "TrapVisual" then return end
+    
+    if obj.Name == "Hitbox" and obj:IsA("BasePart") then
+        if isMine(obj.Parent) then return end
+        
+        local ownerName = obj.Parent and obj.Parent.Name or "Неизвестно"
+        print("!!! НОВАЯ:", ownerName)
+        createVisual(obj, ownerName, true)
+    end
+end)
+
+-- ПЕРЕЗАГРУЗКА ПОСЛЕ СМЕРТИ
+local function onDeath()
+    print("💀 Смерть! Перезагрузка...")
+    task.wait(2)
+    
+    character = player.Character or player.CharacterAdded:Wait()
+    HRP = character:WaitForChild("HumanoidRootPart")
+    myHumanoid = character:WaitForChild("Humanoid")
+    
+    nukeAllVisuals()
+    scanTraps()
+    
+    myHumanoid.Died:Connect(onDeath)
+end
+
+myHumanoid.Died:Connect(onDeath)
+
+print("=== ГОТОВО ===")
