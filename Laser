@@ -1,0 +1,101 @@
+local RS   = game:GetService("RunService")
+local UIS  = game:GetService("UserInputService")
+local Players= game:GetService("Players")
+local player = Players.LocalPlayer
+
+local function getTorso()
+    local char = player.Character or player.CharacterAdded:Wait()
+    return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+end
+
+local rayPart = Instance.new("Part")
+rayPart.Anchored  = true; rayPart.CanCollide = false
+rayPart.Material  = Enum.Material.Neon
+rayPart.Color     = Color3.fromRGB(0,255,255)
+rayPart.Name      = "SwillRay"
+rayPart.Parent    = workspace
+
+local gui = Instance.new("ScreenGui", game:GetService("CoreGui") or player:WaitForChild("PlayerGui"))
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0.45,0,0.35,0)
+frame.Position = UDim2.new(0.5,-frame.Size.X.Offset/2,0.05,0)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = gui
+Instance.new("UICorner",frame).CornerRadius = UDim.new(0,8)
+
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.new(1,-12,1,-12)
+lbl.Position = UDim2.new(0,6,0,6)
+lbl.BackgroundTransparency = 1
+lbl.TextColor3 = Color3.new(1,1,1)
+lbl.TextStrokeTransparency = 0.3
+lbl.Font = Enum.Font.Code
+lbl.TextWrapped = true
+lbl.TextXAlignment = Enum.TextXAlignment.Left
+lbl.TextYAlignment = Enum.TextYAlignment.Top
+lbl.Parent = frame
+
+local lockedPoint   = nil
+local lockedPart    = nil
+local inputDown     = false
+
+UIS.InputBegan:Connect(function(inp,gpe)
+    if gpe then return end
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+        inputDown = true
+        lockedPoint = nil
+        lockedPart  = nil
+    end
+end)
+
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+        inputDown = false
+    end
+end)
+
+RS.RenderStepped:Connect(function()
+    local torso = getTorso()
+    if not torso then rayPart.Transparency = 1; lbl.Text = "No torso"; return end
+
+    local cam  = workspace.CurrentCamera
+    local mouse= player:GetMouse()
+    local origin = torso.Position
+    local dir
+
+    if inputDown then
+        dir = (mouse.Hit.Position - origin).Unit*500
+        local ray = Ray.new(origin, dir)
+        local part,pos = workspace:FindPartOnRayWithIgnoreList(ray, {player.Character})
+        if part then
+            lockedPoint = pos
+            lockedPart  = part
+        else
+            lockedPoint = nil
+            lockedPart  = nil
+        end
+    end
+
+    if lockedPart and lockedPoint then
+        local dist = (lockedPoint - origin).Magnitude
+        rayPart.Size = Vector3.new(0.15, 0.15, dist)
+        rayPart.CFrame = CFrame.new(origin, lockedPoint)*CFrame.new(0,0,-dist/2)
+        rayPart.Transparency = 0
+
+        lbl.Text = string.format(
+            "LOCKED\nName : %s\nClass: %s\nParent: %s\nMaterial: %s\nColor: %s\nPosition: %.2f, %.2f, %.2f",
+            lockedPart.Name,
+            lockedPart.ClassName,
+            lockedPart.Parent.Name,
+            tostring(lockedPart.Material),
+            tostring(lockedPart.Color),
+            lockedPoint.X, lockedPoint.Y, lockedPoint.Z
+        )
+    else
+        rayPart.Transparency = 1
+        lbl.Text = "Scanning…"
+    end
+end)
