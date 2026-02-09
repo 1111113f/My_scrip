@@ -1,0 +1,323 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Удаление левых кнопок
+local mainGui = playerGui:WaitForChild("MainGui")
+if mainGui then
+    local frame = mainGui:FindFirstChild("Frame")
+    if frame then
+        local leftFrame = frame:FindFirstChild("LeftFrame")
+        if leftFrame then
+            leftFrame.Visible = false
+        end
+    end
+end
+
+-- Координаты World 1
+local WORLD1_POS = Vector3.new(-10235, 0, -122)
+local WORLD1_RADIUS = 5000
+
+-- Удаляем старое GUI
+local oldGui = playerGui:FindFirstChild("WorldsMenu")
+if oldGui then oldGui:Destroy() end
+
+-- GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "WorldsMenu"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 400)
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 50)
+titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -90, 0, 22)
+titleLabel.Position = UDim2.new(0, 12, 0, 5)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "🌍 Выбор Мира"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 18
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local currentLabel = Instance.new("TextLabel")
+currentLabel.Name = "CurrentWorld"
+currentLabel.Size = UDim2.new(1, -90, 0, 20)
+currentLabel.Position = UDim2.new(0, 12, 0, 28)
+currentLabel.BackgroundTransparency = 1
+currentLabel.Text = "📍 Определяем..."
+currentLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+currentLabel.TextSize = 13
+currentLabel.Font = Enum.Font.SourceSans
+currentLabel.TextXAlignment = Enum.TextXAlignment.Left
+currentLabel.Parent = titleBar
+
+local refreshBtn = Instance.new("TextButton")
+refreshBtn.Size = UDim2.new(0, 30, 0, 30)
+refreshBtn.Position = UDim2.new(1, -70, 0, 10)
+refreshBtn.BackgroundColor3 = Color3.fromRGB(60, 120, 200)
+refreshBtn.Text = "↻"
+refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+refreshBtn.TextSize = 18
+refreshBtn.Font = Enum.Font.SourceSansBold
+refreshBtn.Parent = titleBar
+
+Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 6)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 10)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+closeBtn.Text = "×"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 20
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.Parent = titleBar
+
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+local openBtn = Instance.new("TextButton")
+openBtn.Size = UDim2.new(0, 50, 0, 50)
+openBtn.Position = UDim2.new(0, 20, 0.5, -25)
+openBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+openBtn.Text = "🌍"
+openBtn.TextSize = 24
+openBtn.Visible = false
+openBtn.Parent = screenGui
+
+Instance.new("UICorner", openBtn).CornerRadius = UDim.new(0, 10)
+
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(1, -16, 1, -65)
+scrollFrame.Position = UDim2.new(0, 8, 0, 57)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+scrollFrame.Parent = mainFrame
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 8)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = scrollFrame
+
+-- ЛОГИКА
+local worldButtons = {}
+local currentButton = nil
+local winsFolder = Workspace:WaitForChild("Wins")
+
+local function findWorldObjects()
+    local worlds = {}
+    for i = 1, 50 do
+        local worldName = "World" .. i
+        local worldObj = winsFolder:FindFirstChild(worldName)
+        if worldObj and worldObj:IsA("BasePart") then
+            table.insert(worlds, {
+                Name = worldName,
+                Object = worldObj,
+                Position = worldObj.Position
+            })
+        end
+    end
+    return worlds
+end
+
+local function detectCurrentWorld()
+    local char = player.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local playerPos = hrp.Position
+    
+    local distToWorld1 = (Vector3.new(playerPos.X, 0, playerPos.Z) - Vector3.new(WORLD1_POS.X, 0, WORLD1_POS.Z)).Magnitude
+    if distToWorld1 < WORLD1_RADIUS then
+        return "World1"
+    end
+    
+    local checkRegion = Region3.new(playerPos - Vector3.new(100, 200, 100), playerPos + Vector3.new(100, 100, 100))
+    local parts = Workspace:FindPartsInRegion3(checkRegion, nil, 200)
+    local worldCounts = {}
+    
+    for _, part in ipairs(parts) do
+        if part.Parent then
+            local parentName = part.Parent.Name
+            if parentName:match("^World%d+$") then
+                worldCounts[parentName] = (worldCounts[parentName] or 0) + 1
+            end
+        end
+    end
+    
+    local bestWorld = nil
+    local maxCount = 0
+    for worldName, count in pairs(worldCounts) do
+        if count > maxCount then
+            maxCount = count
+            bestWorld = worldName
+        end
+    end
+    return bestWorld
+end
+
+local function teleportToWorld(worldData)
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local worldObj = worldData.Object
+    if worldObj and worldObj:IsA("BasePart") then
+        char.HumanoidRootPart.CFrame = worldObj.CFrame + Vector3.new(0, 10, 0)
+    end
+end
+
+local function updateHighlight()
+    local currentWorld = detectCurrentWorld()
+    if currentButton and currentButton.Parent then
+        currentButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        currentButton.Size = UDim2.new(1, -10, 0, 45)
+        local name = currentButton.Name:gsub("Btn_", "")
+        currentButton.Text = "  🎯 " .. name
+    end
+    
+    if currentWorld then
+        currentLabel.Text = "📍 " .. currentWorld
+        currentLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        local btn = worldButtons[currentWorld]
+        if btn then
+            currentButton = btn
+            btn.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
+            btn.Size = UDim2.new(1, -5, 0, 50)
+            btn.Text = "  ✅ " .. currentWorld .. " (Ты здесь)"
+        end
+    else
+        currentLabel.Text = "📍 Неизвестно"
+        currentLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+        currentButton = nil
+    end
+end
+
+local function scrollToButton(btn)
+    if not btn then return end
+    local order = btn.LayoutOrder
+    local targetPos = math.max(0, (order - 1) * 53 - 80)
+    local currentPos = scrollFrame.CanvasPosition.Y
+    for i = 1, 10 do
+        scrollFrame.CanvasPosition = Vector2.new(0, currentPos + (targetPos - currentPos) * (i / 10))
+        wait(0.02)
+    end
+end
+
+local function createWorldButton(worldData, index)
+    local btn = Instance.new("TextButton")
+    btn.Name = "Btn_" .. worldData.Name
+    btn.LayoutOrder = index
+    btn.Size = UDim2.new(1, -10, 0, 45)
+    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    btn.Text = "  🎯 " .. worldData.Name
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 16
+    btn.Font = Enum.Font.SourceSansSemibold
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = scrollFrame
+    
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    
+    local numLabel = Instance.new("TextLabel")
+    numLabel.Size = UDim2.new(0, 40, 1, 0)
+    numLabel.Position = UDim2.new(1, -45, 0, 0)
+    numLabel.BackgroundTransparency = 1
+    numLabel.Text = "#" .. index
+    numLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    numLabel.TextSize = 14
+    numLabel.Font = Enum.Font.SourceSansBold
+    numLabel.Parent = btn
+    
+    btn.MouseEnter:Connect(function()
+        if btn ~= currentButton then
+            btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        if btn ~= currentButton then
+            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        end
+    end)
+    
+    btn.MouseButton1Click:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+        teleportToWorld(worldData)
+        wait(0.3)
+        updateHighlight()
+        scrollToButton(btn)
+    end)
+    
+    worldButtons[worldData.Name] = btn
+end
+
+local function loadWorlds()
+    for _, child in pairs(scrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    worldButtons = {}
+    currentButton = nil
+    
+    local worlds = findWorldObjects()
+    for i, worldData in ipairs(worlds) do
+        createWorldButton(worldData, i)
+    end
+    
+    wait()
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 20)
+    updateHighlight()
+    print("✅ Загружено миров: " .. #worlds)
+end
+
+closeBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = false
+    openBtn.Visible = true
+end)
+
+openBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = true
+    openBtn.Visible = false
+    updateHighlight()
+end)
+
+refreshBtn.MouseButton1Click:Connect(function()
+    refreshBtn.Rotation = refreshBtn.Rotation + 360
+    loadWorlds()
+end)
+
+spawn(function()
+    while wait(1) do
+        if mainFrame.Visible then
+            updateHighlight()
+        end
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    wait(2)
+    updateHighlight()
+end)
+
+loadWorlds()
+print("🌍 Меню миров загружено!")
