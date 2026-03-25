@@ -1,0 +1,409 @@
+-- ============================================
+-- GAME HUB / ХАБ (Poison Tiles + Runner Tracker + Prize TP)
+-- ============================================
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+-- Состояния
+local States = {
+    PoisonTiles = false,   -- Подсветка плиток яда
+    RunnerTracker = false, -- Подсветка бегунов (для искателя)
+    PrizeTeleport = false  -- Телепорт к призу
+}
+
+-- Хранилище
+local PathFolder = Workspace:FindFirstChild("Path")
+local Highlights = {}
+local PrizeConnection = nil
+
+-- Координаты приза (из твоего скриншота)
+local PRIZE_POSITION = Vector3.new(98.31, 372.32, -71.19)
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "GameHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game:GetService("CoreGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 200)
+MainFrame.Position = UDim2.new(0, 10, 0, 10)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 12)
+Corner.Parent = MainFrame
+
+-- Заголовок
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Title.Text = "☠️ GAME HUB"
+Title.TextColor3 = Color3.fromRGB(0, 255, 150)
+Title.TextSize = 16
+Title.Font = Enum.Font.GothamBold
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = Title
+
+-- Функция создания кнопки
+local function CreateToggle(name, pos, colorOn, colorOff)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 40)
+    btn.Position = UDim2.new(0.05, 0, 0, pos)
+    btn.BackgroundColor3 = colorOff
+    btn.Text = "⛔ " .. name .. ": ВЫКЛ"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.GothamBold
+    btn.Parent = MainFrame
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = btn
+    
+    return btn
+end
+
+-- Кнопка 1: Плитки яда
+local TilesBtn = CreateToggle("Плитки яда", 35, Color3.fromRGB(0, 180, 100), Color3.fromRGB(100, 100, 100))
+
+-- Кнопка 2: Трекер бегунов
+local RunnerBtn = CreateToggle("Трекер бегунов", 80, Color3.fromRGB(255, 180, 0), Color3.fromRGB(100, 100, 100))
+
+-- Кнопка 3: Телепорт к призу
+local PrizeBtn = CreateToggle("Телепорт к призу", 125, Color3.fromRGB(255, 50, 150), Color3.fromRGB(100, 100, 100))
+
+-- Статус
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -10, 0, 20)
+Status.Position = UDim2.new(0, 5, 1, -25)
+Status.BackgroundTransparency = 1
+Status.Text = "Готов"
+Status.TextColor3 = Color3.fromRGB(150, 150, 150)
+Status.TextSize = 11
+Status.Font = Enum.Font.Gotham
+Status.Parent = MainFrame
+
+-- ==================== ФУНКЦИЯ 1: ПЛИТКИ ЯДА ====================
+
+local function UpdatePoisonTiles()
+    if not PathFolder then 
+        Status.Text = "Папка Path не найдена!"
+        return 
+    end
+    
+    for _, tile in pairs(PathFolder:GetChildren()) do
+        if tile:IsA("BasePart") then
+            if States.PoisonTiles then
+                -- Включаем
+                if not tile:GetAttribute("Hub_Highlighted") then
+                    tile:SetAttribute("Hub_Highlighted", true)
+                    tile:SetAttribute("Hub_OrigColor", tile.Color)
+                    tile:SetAttribute("Hub_OrigTrans", tile.Transparency)
+                    tile:SetAttribute("Hub_OrigMat", tile.Material)
+                    tile:SetAttribute("Hub_OrigCast", tile.CastShadow)
+                    
+                    tile.Color = Color3.fromRGB(255, 0, 100)
+                    tile.Transparency = 0.3
+                    tile.Material = Enum.Material.Neon
+                    tile.CastShadow = false
+                end
+            else
+                -- Выключаем
+                if tile:GetAttribute("Hub_Highlighted") then
+                    tile.Color = tile:GetAttribute("Hub_OrigColor")
+                    tile.Transparency = tile:GetAttribute("Hub_OrigTrans")
+                    tile.Material = tile:GetAttribute("Hub_OrigMat")
+                    tile.CastShadow = tile:GetAttribute("Hub_OrigCast")
+                    tile:SetAttribute("Hub_Highlighted", nil)
+                end
+            end
+        end
+    end
+end
+
+-- ==================== ФУНКЦИЯ 2: ТРЕКЕР БЕГУНОВ ====================
+
+local RunnerHighlights = {}
+
+local function ClearRunnerHighlights()
+    for player, data in pairs(RunnerHighlights) do
+        if player.Character then
+            -- Восстанавливаем оригинальные цвета
+            for _, part in pairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if part:GetAttribute("Runner_OrigColor") then
+                        part.Color = part:GetAttribute("Runner_OrigColor")
+                        part.Material = part:GetAttribute("Runner_OrigMat")
+                        part.Transparency = part:GetAttribute("Runner_OrigTrans")
+                        part.CastShadow = part:GetAttribute("Runner_OrigCast")
+                        part:SetAttribute("Runner_OrigColor", nil)
+                    end
+                end
+            end
+            
+            -- Удаляем ESP
+            if data.ESP then
+                data.ESP:Destroy()
+            end
+            
+            -- Удаляем Highlight (контур)
+            if data.Highlight then
+                data.Highlight:Destroy()
+            end
+        end
+    end
+    RunnerHighlights = {}
+end
+
+local function UpdateRunnerTracker()
+    if not States.RunnerTracker then
+        ClearRunnerHighlights()
+        return
+    end
+    
+    -- Ищем бегунов
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local isRunner = false
+            
+            -- Проверяем по команде
+            if player.Team and player.Team.Name == "Runner" then
+                isRunner = true
+            end
+            
+            -- Проверяем по leaderstats
+            if not isRunner then
+                local ls = player:FindFirstChild("leaderstats")
+                if ls then
+                    for _, stat in pairs(ls:GetChildren()) do
+                        if stat.Value == "Runner" or stat.Value == "Бегун" then
+                            isRunner = true
+                            break
+                        end
+                    end
+                end
+            end
+            
+            if isRunner then
+                -- Подсвечиваем
+                if not RunnerHighlights[player] then
+                    RunnerHighlights[player] = {}
+                end
+                
+                local char = player.Character
+                if char then
+                    -- Подсветка частей + делаем видимыми
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            if not part:GetAttribute("Runner_OrigColor") then
+                                part:SetAttribute("Runner_OrigColor", part.Color)
+                                part:SetAttribute("Runner_OrigMat", part.Material)
+                                part:SetAttribute("Runner_OrigTrans", part.Transparency)
+                                part:SetAttribute("Runner_OrigCast", part.CastShadow)
+                            end
+                            
+                            part.Color = Color3.fromRGB(255, 220, 0)  -- Жёлтый
+                            part.Material = Enum.Material.Neon
+                            part.Transparency = 0  -- Делаем полностью видимым!
+                            part.CastShadow = false
+                        end
+                    end
+                    
+                    -- Highlight контур вокруг персонажа
+                    if not RunnerHighlights[player].Highlight then
+                        local highlight = Instance.new("Highlight")
+                        highlight.Name = "RunnerHighlight"
+                        highlight.Adornee = char
+                        highlight.FillColor = Color3.fromRGB(255, 220, 0)
+                        highlight.OutlineColor = Color3.fromRGB(255, 100, 0)
+                        highlight.FillTransparency = 0.5
+                        highlight.OutlineTransparency = 0
+                        highlight.Parent = char
+                        RunnerHighlights[player].Highlight = highlight
+                    end
+                    
+                    -- ESP над головой
+                    if not RunnerHighlights[player].ESP then
+                        local head = char:FindFirstChild("Head")
+                        if head then
+                            local esp = Instance.new("BillboardGui")
+                            esp.Size = UDim2.new(0, 100, 0, 30)
+                            esp.StudsOffset = Vector3.new(0, 3.5, 0)
+                            esp.AlwaysOnTop = true
+                            esp.Adornee = head
+                            
+                            local lbl = Instance.new("TextLabel")
+                            lbl.Size = UDim2.new(1, 0, 1, 0)
+                            lbl.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+                            lbl.BorderSizePixel = 2
+                            lbl.BorderColor3 = Color3.fromRGB(255, 100, 0)
+                            lbl.Text = "🏃 " .. player.Name
+                            lbl.TextColor3 = Color3.fromRGB(0, 0, 0)
+                            lbl.TextSize = 12
+                            lbl.Font = Enum.Font.GothamBold
+                            lbl.Parent = esp
+                            
+                            esp.Parent = head
+                            RunnerHighlights[player].ESP = esp
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ==================== ФУНКЦИЯ 3: ТЕЛЕПОРТ К ПРИЗУ ====================
+
+local function TeleportToPrize()
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    -- Телепортируемся к призу (немного выше чтобы не застрять)
+    hrp.CFrame = CFrame.new(PRIZE_POSITION + Vector3.new(0, 5, 0))
+    
+    -- Эффект телепорта
+    local flash = Instance.new("ScreenGui")
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    frame.BackgroundTransparency = 0
+    frame.Parent = flash
+    flash.Parent = game:GetService("CoreGui")
+    
+    TweenService:Create(frame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+    game:GetService("Debris"):AddItem(flash, 0.5)
+end
+
+local function StartPrizeTeleport()
+    if PrizeConnection then return end
+    
+    -- Телепортируем сразу
+    TeleportToPrize()
+    
+    -- И каждую секунду
+    PrizeConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        if tick() % 1 < 0.05 then -- примерно каждую секунду
+            TeleportToPrize()
+        end
+    end)
+end
+
+local function StopPrizeTeleport()
+    if PrizeConnection then
+        PrizeConnection:Disconnect()
+        PrizeConnection = nil
+    end
+end
+
+-- ==================== ОБРАБОТЧИКИ КНОПОК ====================
+
+TilesBtn.MouseButton1Click:Connect(function()
+    States.PoisonTiles = not States.PoisonTiles
+    
+    if States.PoisonTiles then
+        TilesBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+        TilesBtn.Text = "✅ Плитки яда: ВКЛ"
+        Status.Text = "Плитки яда активны"
+        UpdatePoisonTiles()
+    else
+        TilesBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        TilesBtn.Text = "⛔ Плитки яда: ВЫКЛ"
+        Status.Text = "Плитки яда выключены"
+        UpdatePoisonTiles()
+    end
+end)
+
+RunnerBtn.MouseButton1Click:Connect(function()
+    States.RunnerTracker = not States.RunnerTracker
+    
+    if States.RunnerTracker then
+        RunnerBtn.BackgroundColor3 = Color3.fromRGB(255, 180, 0)
+        RunnerBtn.Text = "✅ Трекер бегунов: ВКЛ"
+        Status.Text = "Ищу бегунов..."
+    else
+        RunnerBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        RunnerBtn.Text = "⛔ Трекер бегунов: ВЫКЛ"
+        Status.Text = "Трекер выключен"
+        ClearRunnerHighlights()
+    end
+end)
+
+PrizeBtn.MouseButton1Click:Connect(function()
+    States.PrizeTeleport = not States.PrizeTeleport
+    
+    if States.PrizeTeleport then
+        PrizeBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
+        PrizeBtn.Text = "✅ Телепорт к призу: ВКЛ"
+        Status.Text = "Телепорт к призу активен!"
+        StartPrizeTeleport()
+    else
+        PrizeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        PrizeBtn.Text = "⛔ Телепорт к призу: ВЫКЛ"
+        Status.Text = "Телепорт выключен"
+        StopPrizeTeleport()
+    end
+end)
+
+-- Циклы обновления
+spawn(function()
+    while true do
+        wait(0.5)
+        if States.PoisonTiles then
+            UpdatePoisonTiles()
+        end
+    end
+end)
+
+spawn(function()
+    while true do
+        wait(0.3)
+        if States.RunnerTracker then
+            UpdateRunnerTracker()
+        end
+    end
+end)
+
+-- При выходе игрока
+Players.PlayerRemoving:Connect(function(player)
+    if RunnerHighlights[player] then
+        if RunnerHighlights[player].ESP then
+            RunnerHighlights[player].ESP:Destroy()
+        end
+        if RunnerHighlights[player].Highlight then
+            RunnerHighlights[player].Highlight:Destroy()
+        end
+        RunnerHighlights[player] = nil
+    end
+end)
+
+-- При респавне персонажа
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    Character = newChar
+    -- Если телепорт активен, продолжаем
+    if States.PrizeTeleport then
+        wait(1) -- небольшая задержка после респавна
+        TeleportToPrize()
+    end
+end)
+
+print("=== GAME HUB ЗАГРУЖЕН ===")
+print("Кнопки: Плитки яда | Трекер бегунов | Телепорт к призу")
+print("Позиция приза:", tostring(PRIZE_POSITION))
